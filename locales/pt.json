@@ -1,0 +1,8 @@
+{
+  "ios": {
+    "NSLocationWhenInUseUsageDescription": "O aplicativo precisa acessar sua localização para exibir conteúdo relevante",
+    "NSLocationAlwaysUsageDescription": "O aplicativo precisa acessar sua localização para exibir conteúdo relevante",
+    "NSPhotoLibraryUsageDescription": "O aplicativo precisa acessar as suas fotos para anexar ao dia.",
+    "NSFaceIDUsageDescription": "Permite entrar na app com Face ID."
+  }
+}

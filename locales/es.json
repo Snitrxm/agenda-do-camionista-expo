@@ -1,0 +1,8 @@
+{
+  "ios": {
+    "NSLocationWhenInUseUsageDescription": "La aplicación necesita su ubicación para registrar el lugar de cada acción.",
+    "NSLocationAlwaysUsageDescription": "La aplicación necesita su ubicación para registrar el lugar de cada acción.",
+    "NSPhotoLibraryUsageDescription": "La aplicación necesita acceder a sus fotos para adjuntarlas al día.",
+    "NSFaceIDUsageDescription": "Permite entrar en la app con Face ID."
+  }
+}
