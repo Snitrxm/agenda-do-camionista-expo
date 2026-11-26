@@ -74,6 +74,9 @@ export function HomeScreen() {
             </View>
           )}
           {home.weeklyRest && <WeeklyRestCard rest={home.weeklyRest} now={home.now.getTime()} tz={home.tz} />}
+          {home.dailyRestPast24h && (
+            <WeeklyRestCard rest={home.dailyRestPast24h} now={home.now.getTime()} tz={home.tz} fromDailyRest />
+          )}
           {home.dayInProgress && <DayInProgressCard day={home.dayInProgress} days={home.days} now={home.now} tz={home.tz} />}
           <WeekCountersSection counters={home.weekCounters} />
           <DrivingLimitsCard

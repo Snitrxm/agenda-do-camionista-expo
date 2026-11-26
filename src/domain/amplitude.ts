@@ -16,7 +16,7 @@
 import { strings } from '../i18n';
 import { dayOrdinal } from '../lib/timezone';
 import { DayStruct } from '../types/models';
-import { WEEKLY_RESTS, weeklyRestHours } from './actionTypes';
+import { lastWeeklyRestEnd } from './restTracking';
 import { hasThreeHourRest, isFractionedNineHourRest } from './fractionedRest';
 
 const H = 3600 * 1000;
@@ -35,22 +35,16 @@ const ts = (iso: string | null | undefined): number | null => {
 
 /**
  * Início efetivo da semana (ms) até `before`: o mais recente entre os dias
- * marcados como início da semana e o fim dos repousos semanais.
+ * marcados como início da semana e o fim dos repousos semanais (incluindo
+ * 9H/11H que duraram 24h ou mais).
  */
 export function effectiveWeekStart(days: DayStruct[], before: number = Date.now()): number | null {
   const weekStarts = days
     .filter((d) => d.weekStart)
     .map((d) => ts(d.date))
     .filter((v): v is number => v != null && v <= before);
-  const weeklyRestEnds = days
-    .flatMap((d) => d.actions ?? [])
-    .filter((a) => WEEKLY_RESTS.has(a.action))
-    .map((a) => {
-      const s = ts(a.date);
-      return s == null ? null : s + weeklyRestHours(a.action) * H;
-    })
-    .filter((v): v is number => v != null && v <= before);
-  const all = [...weekStarts, ...weeklyRestEnds];
+  const weeklyEnd = lastWeeklyRestEnd(days, before);
+  const all = weeklyEnd != null ? [...weekStarts, weeklyEnd] : weekStarts;
   return all.length ? Math.max(...all) : null;
 }
 

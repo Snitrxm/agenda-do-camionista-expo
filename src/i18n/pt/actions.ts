@@ -42,4 +42,16 @@ export const actions = {
   dieselPlaceholder: 'Ex.: 511,79',
   adblue: 'AdBlue',
   adbluePlaceholder: 'Ex.: 45,23',
+
+  // Repouso diário que afinal foi semanal (ao gravar a Partida)
+  restWasWeeklyTitle: (real: string) => `Esteve ${real} em repouso`,
+  restWasWeeklyReduced: (hours: string, deadline: string) =>
+    `Um repouso de 24h ou mais conta como repouso semanal reduzido. A semana recomeça e fica a compensar ${hours} até ${deadline}.`,
+  restWasWeeklyNormal: 'Conta como repouso semanal normal. A semana recomeça.',
+  nextWeeklyMustBe45h: 'O próximo repouso semanal tem de ser de 45h.',
+  confirm: 'Confirmar',
+  fixHours: 'Corrigir horas',
+  fixWhichTitle: 'Que hora quer corrigir?',
+  fixDeparture: 'Hora da Partida',
+  fixRest: 'Hora do repouso',
 };

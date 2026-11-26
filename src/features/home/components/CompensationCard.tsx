@@ -59,7 +59,10 @@ export function CompensationCard({ compensation: c, tz }: { compensation: Compen
       </Text>
       <View style={styles.hint}>
         <Text style={text(fontSize.footnote, '400', colors.textSecondary)}>
-          {s.home.compensationHint(formatHoursCompact(9 * H + c.amountMs), amount, formatHoursCompact(45 * H + c.amountMs))}
+          {/* 9h + X com 24h ou mais já conta como semanal: só um semanal de 45h + X a paga. */}
+          {9 * H + c.amountMs >= 24 * H
+            ? s.home.compensationHintWeeklyOnly(amount, formatHoursCompact(45 * H + c.amountMs))
+            : s.home.compensationHint(formatHoursCompact(9 * H + c.amountMs), amount, formatHoursCompact(45 * H + c.amountMs))}
         </Text>
       </View>
     </Card>

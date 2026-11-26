@@ -50,16 +50,18 @@ test('b) Semanal 24H, Partida 46h depois → sem compensação, "contou como nor
   assert.equal(l?.text, 'Real: 46h00 · contou como normal ✓');
 });
 
-test('c) Compensação de 17h pendente e repouso real de 27h → feita sozinha', () => {
+// Um repouso diário de 24h+ já conta como semanal (ver weeklyFromDailyRest.test.ts),
+// por isso o pagamento por um repouso diário só acontece com compensações < 15h.
+test('c) Compensação de 12h pendente e repouso real de 22h → feita sozinha', () => {
   const rest24 = act('Pausa 24H', at(20, 16));
-  const p1 = at(21, 20); // 28h → 17h a compensar
+  const p1 = plus(at(20, 16), 33); // 33h → 12h a compensar
   const rest9 = act('Pausa 9H', at(23, 18));
-  const days = [day(act('Partida', at(20, 6)), rest24), day(act('Partida', p1), rest9), day(act('Partida', plus(at(23, 18), 27)))];
+  const days = [day(act('Partida', at(20, 6)), rest24), day(act('Partida', p1), rest9), day(act('Partida', plus(at(23, 18), 22)))];
   const [c] = buildCompensations(days, TZ, {}, at(26, 12).getTime());
-  assert.equal(c.amountMs, 17 * H);
+  assert.equal(c.amountMs, 12 * H);
   assert.equal(c.done, true);
   assert.equal(c.paidBy?.action.id, rest9.id);
-  assert.equal(c.doneAt, plus(at(23, 18), 27).getTime());
+  assert.equal(c.doneAt, plus(at(23, 18), 22).getTime());
 });
 
 test('d) Compensação de 17h pendente e repouso real de 20h → continua pendente', () => {
@@ -96,10 +98,10 @@ test('Várias pendentes: paga primeiro a de prazo mais curto; um repouso paga s�
   const big = act('Pausa 9H', at(18, 18));
   const days = [
     day(act('Partida', at(6, 6)), r1),
-    day(act('Partida', at(7, 20))), // 28h → 17h
+    day(act('Partida', plus(at(6, 16), 33))), // 33h → 12h
     day(act('Partida', at(13, 6)), r2),
-    day(act('Partida', at(14, 20)), big), // 28h → 17h
-    day(act('Partida', plus(at(18, 18), 30))),
+    day(act('Partida', plus(at(13, 16), 33)), big), // 33h → 12h
+    day(act('Partida', plus(at(18, 18), 22))), // 22h ≥ 9h + 12h
   ];
   const comps = buildCompensations(days, TZ, {}, at(25, 12).getTime());
   assert.equal(comps.find((c) => c.id === r1.id)?.done, true);

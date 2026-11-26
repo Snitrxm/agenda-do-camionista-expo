@@ -1,6 +1,9 @@
 /**
  * Cartão do topo do Início durante um repouso semanal: horas de repouso,
  * barra com marcas nas 24h e 45h e quanto ficaria a compensar se saísse agora.
+ *
+ * Também aparece num repouso diário (9H/11H) que já passou das 24h
+ * (`fromDailyRest`): "Já passou das 24h: vai contar como repouso semanal…".
  */
 
 import React from 'react';
@@ -14,7 +17,17 @@ import { colors, fontSize, text } from '../../../ui/theme';
 const H = 3600 * 1000;
 const MARK_24H = `${(24 / 45) * 100}%` as const;
 
-export function WeeklyRestCard({ rest, now, tz }: { rest: RestPeriod; now: number; tz: string }) {
+export function WeeklyRestCard({
+  rest,
+  now,
+  tz,
+  fromDailyRest = false,
+}: {
+  rest: RestPeriod;
+  now: number;
+  tz: string;
+  fromDailyRest?: boolean;
+}) {
   const s = useStrings();
   const elapsed = Math.max(0, now - rest.start);
   const reached45h = elapsed >= 45 * H;
@@ -26,7 +39,7 @@ export function WeeklyRestCard({ rest, now, tz }: { rest: RestPeriod; now: numbe
     <Card style={styles.card}>
       <View style={styles.titleRow}>
         <Icon name="bed.double.fill" size={fontSize.body} color={colors.restGreen} />
-        <Text style={text(fontSize.caption, '700', colors.restGreen)}>{s.home.inWeeklyRest}</Text>
+        <Text style={text(fontSize.caption, '700', colors.restGreen)}>{fromDailyRest ? s.home.inRest : s.home.inWeeklyRest}</Text>
       </View>
       <Text style={text(fontSize.caption, '400', colors.textSecondary)}>
         {s.home.since(formatDayTime(rest.start, tz))}
@@ -51,14 +64,14 @@ export function WeeklyRestCard({ rest, now, tz }: { rest: RestPeriod; now: numbe
 
       {reached45h ? (
         <View style={[styles.box, { backgroundColor: colors.restGreenBg }]}>
-          <Text style={text(fontSize.subheadline, '600', colors.restGreen)}>{s.home.reached45h}</Text>
+          <Text style={text(fontSize.subheadline, '600', colors.restGreen)}>{fromDailyRest ? s.home.past45h : s.home.reached45h}</Text>
         </View>
       ) : (
         <View style={[styles.box, { backgroundColor: colors.warningBg }]}>
           <Text style={text(fontSize.subheadline, '400', colors.warningText)}>
-            {s.home.leaveNowPrefix}
+            {fromDailyRest ? s.home.past24hPrefix : s.home.leaveNowPrefix}
             <Text style={styles.bold}>{formatHoursCompact(45 * H - elapsed)}</Text>
-            {s.home.leaveNowSuffix(formatDayTime(at45h, tz))}
+            {fromDailyRest ? '.' : s.home.leaveNowSuffix(formatDayTime(at45h, tz))}
           </Text>
         </View>
       )}

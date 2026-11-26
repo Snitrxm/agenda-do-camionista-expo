@@ -11,9 +11,17 @@ import { dateLocale, strings } from '../i18n';
 import { formatAppDate, parseISO } from '../lib/dateFormat';
 import { addDays, dayOrdinal, formatDate, isToday, partsInTz, startOfDay } from '../lib/timezone';
 import { DayActionStruct, DayStruct } from '../types/models';
-import { actionDisplayName, WEEKLY_RESTS, weeklyRestHours } from './actionTypes';
+import { actionDisplayName } from './actionTypes';
 import { isDayOpen } from './days';
 import { isFractionedNineHourRest } from './fractionedRest';
+import {
+  Compensation,
+  formatDayMonth,
+  formatHoursCompact,
+  lastWeeklyRestDeparture,
+  lastWeeklyRestEnd,
+  mustTakeRegularWeeklyRest,
+} from './restTracking';
 
 const H = 3600 * 1000;
 
@@ -25,29 +33,31 @@ export interface WeekCounters {
   normalRests: number;
   /** Dias desta semana com 9h01 ou mais de condução ("10H"). Máximo: 2. */
   extendedDrivingDays: number;
+  /** Dias de trabalho (com Partida) desde o último repouso semanal. Máximo: 6. */
+  workDays: number;
 }
 
-export const EMPTY_WEEK_COUNTERS: WeekCounters = { reducedRests: 0, normalRests: 0, extendedDrivingDays: 0 };
+export const EMPTY_WEEK_COUNTERS: WeekCounters = { reducedRests: 0, normalRests: 0, extendedDrivingDays: 0, workDays: 0 };
 
 /** Segunda-feira 00:00 desta semana e a segunda-feira seguinte, no fuso `tz`. */
-function currentWeekRange(tz: string): [Date, Date] {
-  const startOfToday = startOfDay(new Date(), tz);
+function currentWeekRange(tz: string, now: number): [Date, Date] {
+  const startOfToday = startOfDay(new Date(now), tz);
   const weekday = partsInTz(startOfToday, tz).weekday;
   const daysFromMonday = weekday === 1 ? 6 : weekday - 2;
   const monday = addDays(startOfToday, -daysFromMonday, tz);
   return [monday, addDays(monday, 7, tz)];
 }
 
-function daysCreatedThisWeek(days: DayStruct[], tz: string): DayStruct[] {
-  const [monday, nextMonday] = currentWeekRange(tz);
+function daysCreatedThisWeek(days: DayStruct[], tz: string, now: number): DayStruct[] {
+  const [monday, nextMonday] = currentWeekRange(tz, now);
   return days.filter((day) => {
     const date = parseISO(day.createdAt);
     return !!date && date >= monday && date < nextMonday;
   });
 }
 
-function actionsThisWeek(days: DayStruct[], tz: string): DayActionStruct[] {
-  const [monday, nextMonday] = currentWeekRange(tz);
+function actionsThisWeek(days: DayStruct[], tz: string, now: number): DayActionStruct[] {
+  const [monday, nextMonday] = currentWeekRange(tz, now);
   return days
     .flatMap((d) => d.actions ?? [])
     .filter((a) => {
@@ -67,25 +77,19 @@ function maxDate(dates: (Date | null | undefined)[]): Date | null {
  *
  * A "semana" dos contadores de repouso começa no mais recente entre:
  * - o último dia marcado como início da semana;
- * - o fim do último repouso semanal (24H / 45H / 45H+21H…).
- * Assim, terminado um repouso semanal, as reduzidas e os 11H voltam a 0.
+ * - o fim do último repouso semanal (24H / 45H / 45H+21H…, ou 9H/11H que
+ *   durou 24h ou mais): a Partida seguinte ou, sem ela, registo + duração.
+ * Assim, terminado um repouso semanal, as reduzidas, os 11H e os dias voltam a 0.
  *
  * @returns `null` quando não há nenhuma ação na semana de calendário atual
  *          (nesse caso o Início mantém os contadores anteriores).
  */
-export function computeWeekCounters(days: DayStruct[], tz: string): WeekCounters | null {
-  if (actionsThisWeek(days, tz).length === 0) return null;
+export function computeWeekCounters(days: DayStruct[], tz: string, now: number = Date.now()): WeekCounters | null {
+  if (actionsThisWeek(days, tz, now).length === 0) return null;
 
   const lastWeekStartDate = maxDate(days.filter((d) => d.weekStart).map((d) => parseISO(d.date)));
-  const endOfLastWeeklyRest = maxDate(
-    days
-      .flatMap((d) => d.actions ?? [])
-      .filter((a) => WEEKLY_RESTS.has(a.action))
-      .map((a) => {
-        const date = parseISO(a.date);
-        return date ? new Date(date.getTime() + weeklyRestHours(a.action) * H) : null;
-      })
-  );
+  const weeklyEnd = lastWeeklyRestEnd(days);
+  const endOfLastWeeklyRest = weeklyEnd != null ? new Date(weeklyEnd) : null;
   const effectiveStart = maxDate([lastWeekStartDate, endOfLastWeeklyRest]);
 
   const actionsSinceStart = effectiveStart
@@ -112,11 +116,13 @@ export function computeWeekCounters(days: DayStruct[], tz: string): WeekCounters
       return !isFractionedNineHourRest(rest, sameDayActions);
     });
   const normal = actionsSinceStart.filter((a) => a.action === 'Pausa 11H');
+  const departures = actionsSinceStart.filter((a) => a.action === 'Partida');
 
   return {
     reducedRests: distinctDays(reduced),
     normalRests: distinctDays(normal),
-    extendedDrivingDays: daysCreatedThisWeek(days, tz).filter((d) => (d.drivingMinutes ?? 0) >= 541).length,
+    extendedDrivingDays: daysCreatedThisWeek(days, tz, now).filter((d) => (d.drivingMinutes ?? 0) >= 541).length,
+    workDays: distinctDays(departures),
   };
 }
 
@@ -130,8 +136,10 @@ export function findDayInProgress(days: DayStruct[], tz: string): DayStruct | un
 }
 
 /**
- * Prazo para começar o repouso semanal: Partida do último dia marcado como
- * início da semana + 6 dias (144h). `null` se não houver esse dia/Partida.
+ * Prazo para começar o repouso semanal: início da semana + 6 dias (144h).
+ * O início da semana é a mais recente entre a Partida do último dia marcado
+ * como início da semana e a Partida que fechou o último repouso semanal
+ * (incluindo um 9H/11H que durou 24h ou mais). `null` se não houver nenhuma.
  */
 export function weeklyRestDeadline(days: DayStruct[]): Date | null {
   // Último dia com início da semana (em empate, o primeiro — como max(by:) do Swift).
@@ -145,9 +153,11 @@ export function weeklyRestDeadline(days: DayStruct[]): Date | null {
     }
   }
   const departure = lastWeekStartDay?.actions?.find((a) => a.action === 'Partida');
-  const departureDate = departure ? parseISO(departure.date) : null;
-  if (!departureDate) return null;
-  return new Date(departureDate.getTime() + (7 * 24 - 24) * H);
+  const markedStart = departure ? parseISO(departure.date)?.getTime() ?? null : null;
+  const afterWeeklyRest = lastWeeklyRestDeparture(days);
+  const candidates = [markedStart, afterWeeklyRest].filter((v): v is number => v != null);
+  if (!candidates.length) return null;
+  return new Date(Math.max(...candidates) + (7 * 24 - 24) * H);
 }
 
 // ---------------------------------------------------------------------------
@@ -164,10 +174,34 @@ export interface Warning {
   severity: WarningSeverity;
 }
 
-/** Avisos da cápsula do Início, ordenados por gravidade (mais grave primeiro). */
-export function buildWarnings(days: DayStruct[], counters: WeekCounters, tz: string): Warning[] {
+/**
+ * Avisos da cápsula do Início, ordenados por gravidade (mais grave primeiro).
+ *
+ * @param compensations compensações (pendentes e feitas); as pendentes não provisórias geram um aviso
+ */
+export function buildWarnings(
+  days: DayStruct[],
+  counters: WeekCounters,
+  tz: string,
+  compensations: Compensation[] = [],
+  now: number = Date.now()
+): Warning[] {
   const t = strings().domain.warnings;
   const out: Warning[] = [];
+
+  if (mustTakeRegularWeeklyRest(days, now)) {
+    out.push({ id: 'semanal-45h', title: t.regularWeeklyRestNextTitle, explanation: t.regularWeeklyRestNextText, severity: 0 });
+  }
+
+  for (const c of compensations.filter((x) => !x.done && !x.provisional)) {
+    out.push({
+      id: `compensacao-${c.id}`,
+      title: t.compensationPendingTitle(formatHoursCompact(c.amountMs), formatDayMonth(c.deadline - 60000, tz)),
+      explanation: t.compensationPendingText,
+      severity: 1,
+    });
+  }
+
   const remainingReduced = Math.max(0, 3 - counters.reducedRests);
   const remainingExtended = Math.max(0, 2 - counters.extendedDrivingDays);
 
@@ -198,7 +232,7 @@ export function buildWarnings(days: DayStruct[], counters: WeekCounters, tz: str
 
   const deadline = weeklyRestDeadline(days);
   if (deadline) {
-    const hoursLeft = (deadline.getTime() - Date.now()) / H;
+    const hoursLeft = (deadline.getTime() - now) / H;
     if (hoursLeft <= 24 && hoursLeft >= 0) {
       out.push({
         id: 'repouso-semanal',

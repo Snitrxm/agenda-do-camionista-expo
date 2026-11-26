@@ -6,6 +6,8 @@
  * - Unidade da Descarga: lembra a última usada.
  * - Regras: Repouso 11H indisponível passadas 13h da Partida; Repouso 9H
  *   indisponível com 3 reduzidas usadas e sem Repouso 3H+ (ver domain/amplitude).
+ * - Partida depois de um repouso diário de 24h ou mais → alerta "Esteve Xh em
+ *   repouso" (conta como semanal; ver restWasWeeklyAlert).
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -30,6 +32,7 @@ import {
   fieldSuggestions,
   findOpenLoad,
 } from '../actionForm';
+import { alertIfRestWasWeekly } from '../restWasWeeklyAlert';
 import { useLocationWatcher } from './useLocationWatcher';
 
 const LAST_UNIT_KEY = 'lastUnidadeDescarga';
@@ -89,9 +92,11 @@ export function useCreateAction(dayId: string) {
 
     try {
       const response = await createAction(dayId, body);
-      useDaysStore.getState().addAction(dayId, actionFromResponse(response, dayId, body));
+      const created = actionFromResponse(response, dayId, body);
+      useDaysStore.getState().addAction(dayId, created);
       setSaving(false);
       router.back();
+      alertIfRestWasWeekly(created);
     } catch (e) {
       setSaving(false);
       Alert.alert(s.common.errorTitle, getErrorMessage(e));

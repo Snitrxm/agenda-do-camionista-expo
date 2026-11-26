@@ -13,6 +13,11 @@
  *   paga no máximo uma.
  * - **Prazo**: fim da 3.ª semana a seguir à semana do repouso reduzido.
  * - Repouso real abaixo do registado (9H, 11H, 24H, 45H) → "incompleto".
+ * - **Repouso diário que afinal foi semanal**: um 9H/11H cuja Partida seguinte
+ *   chega 24h ou mais depois do registo conta como repouso semanal
+ *   (24h–45h → reduzido, com compensação de 45h − real; 45h+ → normal).
+ *   O tipo registado pelo motorista não muda: é uma propriedade calculada
+ *   (`RestPeriod.countedAsWeekly`).
  *
  * Tempos em milissegundos (ms) desde a época.
  *
@@ -22,7 +27,7 @@
 import { dateLocale, strings } from '../i18n';
 import { addDays, formatDate, fromWall, partsInTz } from '../lib/timezone';
 import { DayActionStruct, DayStruct } from '../types/models';
-import { REST_REGISTERED_HOURS, REST_TOTAL_HOURS, WEEKLY_RESTS } from './actionTypes';
+import { DAILY_RESTS, REST_REGISTERED_HOURS, REST_TOTAL_HOURS, WEEKLY_RESTS, weeklyRestHours } from './actionTypes';
 
 const H = 3600 * 1000;
 
@@ -30,6 +35,9 @@ const ts = (iso: string): number | null => {
   const v = Date.parse(iso);
   return isNaN(v) ? null : v;
 };
+
+/** Tipo de repouso semanal: reduzido (24h–45h) ou normal (45h+). */
+export type WeeklyKind = 'reduced' | 'normal';
 
 /** Um repouso registado e a sua duração real. */
 export interface RestPeriod {
@@ -40,7 +48,29 @@ export interface RestPeriod {
   end: number | null;
   /** repouso real (até agora, se ainda não houve Partida) */
   realMs: number;
+  /** registado como semanal (24H, 45H…) */
+  registeredWeekly: boolean;
+  /** repouso diário (9H/11H) que, com a Partida, durou 24h+ e conta como semanal */
+  countedAsWeekly: WeeklyKind | null;
+  /** conta como semanal (registado ou calculado) */
   weekly: boolean;
+}
+
+/**
+ * Um repouso diário conta como semanal quando já houve Partida e o repouso
+ * real chegou às 24h: reduzido abaixo de 45h, normal a partir de 45h.
+ */
+export function countedAsWeeklyKind(action: string, realMs: number, end: number | null): WeeklyKind | null {
+  if (!DAILY_RESTS.has(action) || end == null || realMs < 24 * H) return null;
+  return realMs >= 45 * H ? 'normal' : 'reduced';
+}
+
+/** Tipo de semanal de um repouso (`null` se não for semanal). */
+export function weeklyKind(r: RestPeriod): WeeklyKind | null {
+  if (r.countedAsWeekly) return r.countedAsWeekly;
+  if (!r.registeredWeekly) return null;
+  if (r.action.action === 'Pausa 24H') return r.end != null && r.realMs >= 45 * H ? 'normal' : 'reduced';
+  return 'normal';
 }
 
 function allActions(days: DayStruct[]): DayActionStruct[] {
@@ -60,13 +90,10 @@ export function getRestPeriod(action: DayActionStruct, days: DayStruct[], now: n
   const start = ts(action.date);
   if (start == null) return null;
   const end = sortedDepartures(days).find((p) => p > start) ?? null;
-  return {
-    action,
-    start,
-    end,
-    realMs: Math.max(0, (end ?? now) - start),
-    weekly: WEEKLY_RESTS.has(action.action),
-  };
+  const realMs = Math.max(0, (end ?? now) - start);
+  const registeredWeekly = WEEKLY_RESTS.has(action.action);
+  const countedAsWeekly = countedAsWeeklyKind(action.action, realMs, end);
+  return { action, start, end, realMs, registeredWeekly, countedAsWeekly, weekly: registeredWeekly || countedAsWeekly != null };
 }
 
 /** Todos os repousos diários e semanais, por ordem cronológica. */
@@ -76,6 +103,49 @@ export function listRestPeriods(days: DayStruct[], now: number = Date.now()): Re
     .map((a) => getRestPeriod(a, days, now))
     .filter((r): r is RestPeriod => r != null)
     .sort((a, b) => a.start - b.start);
+}
+
+/**
+ * Fim de um repouso semanal, onde começa a semana seguinte: a Partida
+ * seguinte; sem Partida (só nos registados), registo + duração do semanal.
+ */
+function weeklyRestEnd(r: RestPeriod): number {
+  return r.end ?? r.start + weeklyRestHours(r.action.action) * H;
+}
+
+/**
+ * Fim do último repouso semanal (registado ou calculado) que termina até
+ * `before`. `null` se não houver.
+ */
+export function lastWeeklyRestEnd(days: DayStruct[], before: number = Infinity): number | null {
+  const ends = listRestPeriods(days, Number.isFinite(before) ? before : Date.now())
+    .filter((r) => r.weekly)
+    .map(weeklyRestEnd)
+    .filter((e) => e <= before);
+  return ends.length ? Math.max(...ends) : null;
+}
+
+/** Partida que fechou o último repouso semanal (registado ou calculado). */
+export function lastWeeklyRestDeparture(days: DayStruct[]): number | null {
+  const ends = listRestPeriods(days)
+    .filter((r) => r.weekly && r.end != null)
+    .map((r) => r.end as number);
+  return ends.length ? Math.max(...ends) : null;
+}
+
+/** Repousos semanais já terminados (com Partida até `now`), por ordem. */
+function finishedWeeklyRests(days: DayStruct[], now: number): RestPeriod[] {
+  return listRestPeriods(days, now).filter((r) => r.weekly && r.end != null && r.end <= now);
+}
+
+/**
+ * Os dois últimos repousos semanais foram reduzidos → o próximo tem de ser
+ * de 45h.
+ */
+export function mustTakeRegularWeeklyRest(days: DayStruct[], now: number = Date.now()): boolean {
+  const done = finishedWeeklyRests(days, now);
+  if (done.length < 2) return false;
+  return done.slice(-2).every((r) => weeklyKind(r) === 'reduced');
 }
 
 // ---------------------------------------------------------------------------
@@ -113,10 +183,12 @@ export function formatDayMonth(ms: number, tz: string): string {
 /**
  * - `compensate`: 24H com repouso real entre 24h e 45h (laranja)
  * - `counted-as-normal`: 24H com 45h ou mais (verde)
+ * - `weekly-reduced`: 9H/11H que durou 24h–45h → contou como semanal reduzido (laranja)
+ * - `weekly-normal`: 9H/11H que durou 45h+ → contou como semanal normal (verde)
  * - `incomplete`: repouso real abaixo do registado (vermelho)
  * - `ok`: repouso cumprido (verde)
  */
-export type RestLabelKind = 'compensate' | 'counted-as-normal' | 'incomplete' | 'ok';
+export type RestLabelKind = 'compensate' | 'counted-as-normal' | 'weekly-reduced' | 'weekly-normal' | 'incomplete' | 'ok';
 
 export interface RestLabel {
   kind: RestLabelKind;
@@ -137,6 +209,8 @@ export function getRestLabel(action: DayActionStruct, days: DayStruct[]): RestLa
     if (period.realMs < 24 * H) return { kind: 'incomplete', text: t.incomplete(real) };
     return { kind: 'compensate', text: t.compensate(real, formatHoursCompact(45 * H - period.realMs)) };
   }
+  if (period.countedAsWeekly === 'reduced') return { kind: 'weekly-reduced', text: t.countedAsWeeklyReduced(real) };
+  if (period.countedAsWeekly === 'normal') return { kind: 'weekly-normal', text: t.countedAsWeeklyNormal(real) };
   if (period.realMs < registered * H) return { kind: 'incomplete', text: t.incomplete(real) };
   return { kind: 'ok', text: t.ok(real) };
 }
@@ -160,7 +234,7 @@ export interface ManualCompletion {
 }
 
 export interface Compensation {
-  /** id da ação "Pausa 24H" que originou a compensação */
+  /** id do repouso que originou a compensação ("Pausa 24H" ou 9H/11H que contou como semanal reduzido) */
   id: string;
   rest: RestPeriod;
   /** horas a compensar (ms) */
@@ -190,7 +264,7 @@ export function buildCompensations(
   const rests = listRestPeriods(days, now);
 
   const comps: Compensation[] = rests
-    .filter((r) => r.action.action === 'Pausa 24H')
+    .filter((r) => r.action.action === 'Pausa 24H' || r.countedAsWeekly === 'reduced')
     .filter((r) => r.end == null || r.realMs < 45 * H)
     .map((r) => {
       const provisional = r.end == null;
@@ -260,6 +334,58 @@ export interface OngoingRest {
   /** hora a que pode sair */
   end: number;
   weekly: boolean;
+}
+
+/**
+ * Repouso diário (9H/11H) em curso há 24h ou mais, ainda sem Partida:
+ * se sair agora vai contar como repouso semanal.
+ */
+export function ongoingDailyRestPast24h(days: DayStruct[], now: number = Date.now()): RestPeriod | null {
+  const last = lastAction(days, now);
+  if (!last || !DAILY_RESTS.has(last.a.action) || now - last.ts < 24 * H) return null;
+  return getRestPeriod(last.a, days, now);
+}
+
+// ---------------------------------------------------------------------------
+// Partida depois de um repouso diário que afinal foi semanal
+// ---------------------------------------------------------------------------
+
+export interface DepartureWeeklyCheck {
+  /** o repouso diário que passou a contar como semanal */
+  rest: RestPeriod;
+  kind: WeeklyKind;
+  /** horas a compensar (0 se normal) */
+  compensationMs: number;
+  /** prazo da compensação (ms) */
+  deadline: number;
+  /** semanal anterior também reduzido → o próximo tem de ser de 45h */
+  mustTakeRegularNext: boolean;
+}
+
+/**
+ * Ao gravar (ou corrigir) uma Partida: o repouso diário que ela fecha durou
+ * 24h ou mais? Se sim, conta como semanal e devolve o que muda. `null` caso contrário.
+ */
+export function checkDepartureAfterRest(
+  days: DayStruct[],
+  departure: DayActionStruct,
+  tz: string,
+  now: number = Date.now()
+): DepartureWeeklyCheck | null {
+  const dep = ts(departure.date);
+  if (dep == null || departure.action !== 'Partida') return null;
+  const rests = listRestPeriods(days, now);
+  const rest = rests.filter((r) => r.end === dep && r.countedAsWeekly).pop();
+  if (!rest || !rest.countedAsWeekly) return null;
+  const kind = rest.countedAsWeekly;
+  const previous = rests.filter((r) => r.weekly && r.end != null && r.end <= rest.start).pop();
+  return {
+    rest,
+    kind,
+    compensationMs: kind === 'reduced' ? 45 * H - rest.realMs : 0,
+    deadline: compensationDeadline(rest.start, tz),
+    mustTakeRegularNext: kind === 'reduced' && !!previous && weeklyKind(previous) === 'reduced',
+  };
 }
 
 /** Qualquer repouso em curso (3H+, 9H, 11H, semanais): a última ação é esse repouso. */

@@ -29,6 +29,7 @@ export const home: typeof pt = {
   reducedRests: 'REDUCIDOS 9H',
   normalRests: 'DESCANSO 11H',
   extendedDriving: 'COND. 10H',
+  workDays: 'DÍAS',
 
   drivingLimits: 'Límites de conducción',
   weekly: 'SEMANAL',
@@ -50,6 +51,8 @@ export const home: typeof pt = {
   reached45h: 'Ya ha cumplido las 45h',
   leaveNowPrefix: 'Si sale ahora, tendrá que compensar ',
   leaveNowSuffix: (when: string) => `. A las ${when} completa las 45h y no compensa nada.`,
+  past24hPrefix: 'Ya pasó de las 24h: va a contar como descanso semanal. Si sale ahora, compensa ',
+  past45h: 'Ya pasó de las 45h: va a contar como descanso semanal normal.',
 
   compensationDone: (amount: string) => `Compensación de ${amount} hecha`,
   compensationDetected: (duration: string, date: string) => `Detectada automáticamente · descanso de ${duration} el ${date}`,
@@ -61,6 +64,8 @@ export const home: typeof pt = {
   compensationProgress: (done: string, deadline: string) => `45h − ${done} hechas · hasta ${deadline}`,
   compensationHint: (daily: string, amount: string, weekly: string) =>
     `Se marca sola cuando haga un descanso de ${daily} o más (9h + ${amount}), o uno semanal de ${weekly} (45h + ${amount}).`,
+  compensationHintWeeklyOnly: (amount: string, weekly: string) =>
+    `Se marca sola cuando haga un descanso semanal de ${weekly} (45h + ${amount}).`,
 
   generatePdf: 'Generar PDF',
   deleteDay: 'Eliminar',

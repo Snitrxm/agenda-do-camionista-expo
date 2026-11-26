@@ -32,6 +32,7 @@ export const home = {
   reducedRests: 'REDUZIDAS 9H',
   normalRests: 'REPOUSO 11H',
   extendedDriving: 'COND. 10H',
+  workDays: 'DIAS',
 
   // Limites de condução
   drivingLimits: 'Limites de condução',
@@ -56,6 +57,8 @@ export const home = {
   reached45h: 'Já cumpriu as 45h',
   leaveNowPrefix: 'Se sair agora, fica a compensar ',
   leaveNowSuffix: (when: string) => `. Às ${when} completa as 45h e não compensa nada.`,
+  past24hPrefix: 'Já passou das 24h: vai contar como repouso semanal. Se sair agora, compensa ',
+  past45h: 'Já passou das 45h: vai contar como repouso semanal normal.',
 
   // Compensação
   compensationDone: (amount: string) => `Compensação de ${amount} feita`,
@@ -68,6 +71,8 @@ export const home = {
   compensationProgress: (done: string, deadline: string) => `45h − ${done} feitas · até ${deadline}`,
   compensationHint: (daily: string, amount: string, weekly: string) =>
     `Fica feita sozinha quando fizer um repouso de ${daily} ou mais (9h + ${amount}), ou um semanal de ${weekly} (45h + ${amount}).`,
+  compensationHintWeeklyOnly: (amount: string, weekly: string) =>
+    `Fica feita sozinha quando fizer um semanal de ${weekly} (45h + ${amount}).`,
 
   // Linha de um dia
   generatePdf: 'Gerar PDF',

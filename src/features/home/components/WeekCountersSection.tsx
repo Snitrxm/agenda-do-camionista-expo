@@ -1,5 +1,6 @@
 /**
- * Secção "ESTA SEMANA": reduzidas 9H, repousos 11H e dias de condução de 10H.
+ * Secção "ESTA SEMANA": dias de trabalho desde o repouso semanal, reduzidas 9H,
+ * repousos 11H e dias de condução de 10H (grelha 2×2).
  */
 
 import React from 'react';
@@ -15,7 +16,10 @@ export function WeekCountersSection({ counters }: { counters: WeekCounters }) {
     <View style={styles.section}>
       <Text style={styles.sectionTitle}>{s.home.thisWeek}</Text>
       <View style={styles.row}>
+        <CounterCard title={s.home.workDays} value={counters.workDays} total={6} />
         <CounterCard title={s.home.reducedRests} value={counters.reducedRests} total={3} />
+      </View>
+      <View style={styles.row}>
         <CounterCard title={s.home.normalRests} value={counters.normalRests} />
         <CounterCard title={s.home.extendedDriving} value={counters.extendedDrivingDays} total={2} />
       </View>

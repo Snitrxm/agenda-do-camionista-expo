@@ -43,4 +43,15 @@ export const actions: typeof pt = {
   dieselPlaceholder: 'Ej.: 511,79',
   adblue: 'AdBlue',
   adbluePlaceholder: 'Ej.: 45,23',
+
+  restWasWeeklyTitle: (real: string) => `Estuvo ${real} en descanso`,
+  restWasWeeklyReduced: (hours: string, deadline: string) =>
+    `Un descanso de 24h o más cuenta como descanso semanal reducido. La semana vuelve a empezar y queda por compensar ${hours} hasta el ${deadline}.`,
+  restWasWeeklyNormal: 'Cuenta como descanso semanal normal. La semana vuelve a empezar.',
+  nextWeeklyMustBe45h: 'El próximo descanso semanal tiene que ser de 45h.',
+  confirm: 'Confirmar',
+  fixHours: 'Corregir horas',
+  fixWhichTitle: '¿Qué hora quiere corregir?',
+  fixDeparture: 'Hora de la Salida',
+  fixRest: 'Hora del descanso',
 };
