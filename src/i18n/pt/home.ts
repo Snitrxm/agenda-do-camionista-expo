@@ -2,6 +2,8 @@
 export const home = {
   // Ecrã
   noDays: 'Nenhum dia cadastrado',
+  noDaysHint: 'Toque em "Novo dia" para registar o primeiro dia.',
+  noSearchResults: 'Nenhum dia encontrado',
   recentDays: 'DIAS RECENTES',
   newDay: 'Novo dia',
   searchPlaceholder: 'Pesquisar dia, cliente ou local',

@@ -2,6 +2,8 @@ import type { home as pt } from '../pt/home';
 
 export const home: typeof pt = {
   noDays: 'No hay días registrados',
+  noDaysHint: 'Toque en "Nuevo día" para registrar el primer día.',
+  noSearchResults: 'No se ha encontrado ningún día',
   recentDays: 'DÍAS RECIENTES',
   newDay: 'Nuevo día',
   searchPlaceholder: 'Buscar día, cliente o lugar',

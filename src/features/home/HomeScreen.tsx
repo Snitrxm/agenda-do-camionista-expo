@@ -50,10 +50,6 @@ export function HomeScreen() {
         <View style={styles.center}>
           <ActivityIndicator />
         </View>
-      ) : home.filteredDays.length === 0 ? (
-        <View style={styles.center}>
-          <Text style={styles.empty}>{s.home.noDays}</Text>
-        </View>
       ) : (
         <ScrollView
           style={styles.screen}
@@ -89,11 +85,19 @@ export function HomeScreen() {
           ))}
           <View style={styles.daysSection}>
             <Text style={styles.sectionTitle}>{s.home.recentDays}</Text>
-            <View>
-              {home.filteredDays.map((day) => (
-                <DayRow key={day.id} day={day} allDays={home.days} />
-              ))}
-            </View>
+            {home.filteredDays.length > 0 ? (
+              <View>
+                {home.filteredDays.map((day) => (
+                  <DayRow key={day.id} day={day} allDays={home.days} />
+                ))}
+              </View>
+            ) : (
+              // Conta nova (ou pesquisa sem resultados): o resto do Início continua visível.
+              <View style={styles.emptyDays}>
+                <Text style={styles.empty}>{home.days.length === 0 ? s.home.noDays : s.home.noSearchResults}</Text>
+                {home.days.length === 0 && <Text style={styles.emptyHint}>{s.home.noDaysHint}</Text>}
+              </View>
+            )}
           </View>
         </ScrollView>
       )}
@@ -115,7 +119,9 @@ export function HomeScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  empty: { ...text(fontSize.headline, '600'), padding: 16 },
+  emptyDays: { alignItems: 'center', gap: 4, paddingHorizontal: 16, paddingVertical: 24 },
+  empty: text(fontSize.headline, '600'),
+  emptyHint: { ...text(fontSize.subheadline, '400', colors.textSecondary), textAlign: 'center' },
   content: { gap: 14 },
   topBar: { paddingHorizontal: 16 },
   padded: { paddingHorizontal: 16 },
