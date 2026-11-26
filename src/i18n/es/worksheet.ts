@@ -1,15 +1,13 @@
 import type { worksheet as pt } from '../pt/worksheet';
 
 export const worksheet: typeof pt = {
-  periodDay: 'Día',
-  periodWeek: 'Semana',
-  periodMonth: 'Mes',
-  subtitleDay: 'Día: elija la fecha',
-  subtitleWeek: 'Semana: de lunes a domingo',
-  subtitleMonth: 'Mes: calendario completo',
+  from: 'Desde',
+  until: 'Hasta',
+  untilBeforeFrom: '"Hasta" no puede ser anterior a "Desde".',
+  sameDateHint: 'Para un solo día, ponga la misma fecha en los dos.',
   templateName: 'Registo Serviço Ibérico · Agrotir',
   plate: 'Matrícula',
-  trailer: 'Remolque',
+  trailer: 'Cisterna',
   allPlates: 'Todas',
   previewTitle: 'VISTA PREVIA · PÁGINA 1',
   columnDay: 'DÍA',

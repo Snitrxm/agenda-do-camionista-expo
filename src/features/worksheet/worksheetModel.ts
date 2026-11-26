@@ -1,6 +1,6 @@
 /**
- * Folha de serviço (modelo Agrotir "Registo Serviço Ibérico"): períodos
- * Dia/Semana/Mês, linhas da tabela (cada Descarga ligada ao Carregamento por
+ * Folha de serviço (modelo Agrotir "Registo Serviço Ibérico"): período
+ * de … até … (datas escolhidas), linhas da tabela (cada Descarga ligada ao Carregamento por
  * descarregar), contadores e abastecimentos.
  *
  * Funções puras; o fuso horário é passado por parâmetro.
@@ -11,14 +11,57 @@ import { dateLocale, strings } from '../../i18n';
 import { parseISO } from '../../lib/dateFormat';
 import { DayActionStruct, DayStruct } from '../../types/models';
 import { formatDecimal, formatInteger } from '../../lib/numbers';
-import { addDays, addMonths, capitalizedWords, formatDate, fromWall, partsInTz, startOfDay } from '../../lib/timezone';
+import { addDays, capitalizedWords, formatDate, fromWall, partsInTz, startOfDay } from '../../lib/timezone';
 
-export type WorkSheetPeriod = 'day' | 'week' | 'month';
-export const PERIODS: WorkSheetPeriod[] = ['day', 'week', 'month'];
-export const periodLabel = (p: WorkSheetPeriod) => {
-  const t = strings().worksheet;
-  return p === 'day' ? t.periodDay : p === 'week' ? t.periodWeek : t.periodMonth;
-};
+/** Período da folha: de `from` até `until`, os dois dias incluídos. Para um só dia, a mesma data nos dois. */
+export interface DateRange {
+  from: Date;
+  until: Date;
+}
+
+/** Por omissão: do dia 1 do mês atual até hoje (no fuso `tz`). */
+export function defaultRange(now: Date, tz: string): DateRange {
+  const p = partsInTz(now, tz);
+  return { from: fromWall(p.year, p.month, 1, 12, 0, 0, tz), until: now };
+}
+
+/** Início do dia "De" e início do dia a seguir ao "Até" (intervalo [início, fim[). */
+export function rangeBounds(range: DateRange, tz: string): [Date, Date] {
+  return [startOfDay(range.from, tz), addDays(startOfDay(range.until, tz), 1, tz)];
+}
+
+/** Erro de validação das datas (`null` se estiverem certas): "Até" não pode ser antes de "De". */
+export function rangeError(range: DateRange, tz: string): string | null {
+  return startOfDay(range.until, tz) < startOfDay(range.from, tz) ? strings().worksheet.untilBeforeFrom : null;
+}
+
+const isSingleDay = (range: DateRange, tz: string) => startOfDay(range.from, tz).getTime() === startOfDay(range.until, tz).getTime();
+const ddmmyyyy = (d: Date, tz: string) => formatDate(d, 'dd/MM/yyyy', tz, 'pt_PT');
+
+/**
+ * Período no cabeçalho do PDF (sempre em português):
+ * `{ label: "Período:", value: "15/11/2026 a 16/11/2026" }` ou `{ label: "Dia:", value: "15/11/2026" }`.
+ */
+export function rangeHeader(range: DateRange, tz: string): { label: string; value: string } {
+  if (isSingleDay(range, tz)) return { label: 'Dia:', value: ddmmyyyy(range.from, tz) };
+  return { label: 'Período:', value: `${ddmmyyyy(range.from, tz)} a ${ddmmyyyy(range.until, tz)}` };
+}
+
+/** Título do período no ecrã ("15 nov. 2026 a 16 nov. 2026" ou "Domingo, 15 nov. 2026"). */
+export function rangeTitle(range: DateRange, tz: string): string {
+  const locale = dateLocale('pt_PT');
+  if (isSingleDay(range, tz)) return capitalizedWords(formatDate(range.from, 'EEEE, d MMM yyyy', tz, locale));
+  return strings().dates.range(formatDate(range.from, 'd MMM yyyy', tz, locale), formatDate(range.until, 'd MMM yyyy', tz, locale));
+}
+
+/**
+ * Nome do ficheiro (sem extensão): "Registo servico 12-AB-34 15-11-2026 a 16-11-2026".
+ * As datas levam "-" em vez de "/" (a "/" não é permitida em nomes de ficheiro).
+ */
+export function fileBaseName(plate: string | null, range: DateRange, tz: string): string {
+  const d = (x: Date) => formatDate(x, 'dd-MM-yyyy', tz, 'pt_PT');
+  return `Registo servico ${plate ?? 'matricula'} ${d(range.from)} a ${d(range.until)}`;
+}
 
 export interface WorkSheetRow {
   id: string;
@@ -53,64 +96,9 @@ const byDate = <T extends { date: string }>(arr: T[]) =>
     .sort((x, y) => (parseISO(x.a.date)?.getTime() ?? -Infinity) - (parseISO(y.a.date)?.getTime() ?? -Infinity) || x.i - y.i)
     .map((x) => x.a);
 
-export function periodRange(period: WorkSheetPeriod, referenceDate: Date, tz: string): [Date, Date] {
-  const startOfRef = startOfDay(referenceDate, tz);
-  switch (period) {
-    case 'day':
-      return [startOfRef, addDays(startOfRef, 1, tz)];
-    case 'week': {
-      const weekday = partsInTz(startOfRef, tz).weekday;
-      const daysFromMonday = weekday === 1 ? 6 : weekday - 2;
-      const monday = addDays(startOfRef, -daysFromMonday, tz);
-      return [monday, addDays(monday, 7, tz)];
-    }
-    case 'month': {
-      const p = partsInTz(startOfRef, tz);
-      const first = fromWall(p.year, p.month, 1, 0, 0, 0, tz);
-      return [first, addMonths(first, 1, tz)];
-    }
-  }
-}
-
-export function periodTitle(period: WorkSheetPeriod, referenceDate: Date, tz: string): string {
-  const locale = dateLocale('pt_PT');
-  switch (period) {
-    case 'day':
-      return capitalizedWords(formatDate(referenceDate, 'EEEE, d MMM yyyy', tz, locale));
-    case 'week': {
-      const [start, end] = periodRange(period, referenceDate, tz);
-      const last = addDays(end, -1, tz);
-      return strings().dates.range(formatDate(start, 'd', tz, locale), formatDate(last, 'd MMM yyyy', tz, locale));
-    }
-    case 'month':
-      return capitalizedWords(formatDate(referenceDate, 'MMMM yyyy', tz, locale));
-  }
-}
-
-export function periodSubtitle(period: WorkSheetPeriod): string {
-  switch (period) {
-    case 'day':
-      return strings().worksheet.subtitleDay;
-    case 'week':
-      return strings().worksheet.subtitleWeek;
-    case 'month':
-      return strings().worksheet.subtitleMonth;
-  }
-}
-
-export function stepPeriod(period: WorkSheetPeriod, referenceDate: Date, delta: number, tz: string): Date {
-  switch (period) {
-    case 'day':
-      return addDays(referenceDate, delta, tz);
-    case 'week':
-      return addDays(referenceDate, 7 * delta, tz);
-    case 'month':
-      return addMonths(referenceDate, delta, tz);
-  }
-}
-
-export function daysInPeriod(days: DayStruct[], period: WorkSheetPeriod, referenceDate: Date, tz: string): DayStruct[] {
-  const [start, end] = periodRange(period, referenceDate, tz);
+/** Dias cuja data cai entre "De" e "Até" (inclusive), por ordem de data. */
+export function daysInRange(days: DayStruct[], range: DateRange, tz: string): DayStruct[] {
+  const [start, end] = rangeBounds(range, tz);
   return byDate(
     days.filter((d) => {
       const date = parseISO(d.date);
@@ -299,7 +287,7 @@ export interface SheetCells {
   loadPlace: string;
   /** "–" quando a carga ainda não foi descarregada */
   unloadPlace: string;
-  /** quantidade descarregada ("25 000 L") */
+  /** quantidade descarregada ("25 000 L"); "–" quando a carga ainda não foi descarregada */
   unloaded: string;
   kmStart: string;
   kmEnd: string;
@@ -312,7 +300,7 @@ export function sheetCells(r: WorkSheetRow): SheetCells {
     client: r.cliente ?? '',
     loadPlace: r.localCarga ?? '',
     unloadPlace: r.localDescarga ?? (r.localCarga ? '–' : ''),
-    unloaded: r.quantidadeText ?? '',
+    unloaded: r.quantidadeText ?? (r.localCarga ? '–' : ''),
     kmStart: r.kmInicial != null ? formatInteger(r.kmInicial) : '–',
     kmEnd: r.kmFinal != null ? formatInteger(r.kmFinal) : '–',
   };

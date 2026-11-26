@@ -32,7 +32,7 @@ modal, folha) está declarada em `app/_layout.tsx`.
 | `/edit-action?dayId=&actionId=` | Editar ação | modal |
 | `/settings` | Ajustes | modal |
 | `/weekly-hours` | Condução semanal | modal |
-| `/worksheet` | Folha de serviço | modal |
+| `/worksheet` | Folha de serviço (datas De / Até) | modal |
 | `/map?dayId=` | Mapa do dia | folha |
 | `/photo?dayId=&name=&url=` | Foto | modal escuro |
 
@@ -90,6 +90,7 @@ resultados. Os nomes estão em inglês; o vocabulário do domínio:
 | weekly rest | repouso semanal (24H / 45H) |
 | compensation | compensação do repouso semanal reduzido |
 | real rest (`RestPeriod.realMs`) | repouso real (até à Partida seguinte) |
+| counted as weekly (`RestPeriod.countedAsWeekly`) | 9H/11H que durou 24h+ até à Partida e conta como semanal (reduzido/normal) |
 | day limit / amplitude | amplitude (Partida + 13h/15h) |
 | week counters | contadores "ESTA SEMANA" |
 

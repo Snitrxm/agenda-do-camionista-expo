@@ -18,8 +18,10 @@ const HEADER_FILL = 'rgb(235,235,235)'; // UIColor(white: 0.92)
 
 export interface WorkSheetPdfContext {
   title: string;
-  mes: string;
-  ano: string;
+  /** "Período:" ou "Dia:" */
+  periodLabel: string;
+  /** "15/11/2026 a 16/11/2026" ou "15/11/2026" */
+  periodValue: string;
   truckPlate: string | null;
   trailerPlate: string | null;
   motorista: string;
@@ -51,9 +53,9 @@ function topHeader(out: string[], showMatricula: boolean, data: WorkSheetPdfCont
     const boxH = 20;
     const boxesX = PAGE_W / 2 - boxW - 20;
     labelBox(out, 'Matrícula:', data.truckPlate ?? '', boxesX, y - 2, boxW, boxH);
-    labelBox(out, 'Mês:', data.mes, boxesX, y + boxH + 2, boxW, boxH);
+    // Período numa caixa larga (de uma coluna à outra): "Período: 15/11/2026 a 16/11/2026".
+    labelBox(out, data.periodLabel, data.periodValue, boxesX, y + boxH + 2, boxW * 2 + 40, boxH);
     labelBox(out, 'Cisterna:', data.trailerPlate ?? '', PAGE_W / 2 + 20, y - 2, boxW, boxH);
-    labelBox(out, 'Ano:', data.ano, PAGE_W / 2 + 20, y + boxH + 2, boxW, boxH);
   } else {
     out.push(text('(*) A compilação é da falha da aplicação "a-trans"', margin + 150, y + 10, 400, 14, { size: 9 }));
   }

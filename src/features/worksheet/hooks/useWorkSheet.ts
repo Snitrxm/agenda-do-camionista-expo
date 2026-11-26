@@ -1,6 +1,6 @@
 /**
- * Estado da Folha de serviço (período, data de referência, matrícula) e
- * exportação para PDF / CSV com partilha.
+ * Estado da Folha de serviço (datas De / Até, matrícula) e exportação para
+ * PDF / CSV com partilha. Com "Até" antes de "De" há erro e não exporta.
  *
  * Trabalha sobre um instantâneo dos dias tirado quando o ecrã abre.
  */
@@ -8,7 +8,6 @@
 import * as Sharing from 'expo-sharing';
 import { useMemo, useState } from 'react';
 import { strings } from '../../../i18n';
-import { capitalizedWords, formatDate } from '../../../lib/timezone';
 import { getCurrentUser } from '../../../stores/authStore';
 import { useDaysStore } from '../../../stores/daysStore';
 import { timeZoneId, useSettingsStore } from '../../../stores/settingsStore';
@@ -17,57 +16,55 @@ import {
   buildFuelingEntries,
   buildRows,
   counts,
-  daysInPeriod,
+  DateRange,
+  daysInRange,
+  defaultRange,
+  fileBaseName,
   filterByPlate,
   missingFinalKmWarnings,
-  periodTitle,
-  stepPeriod,
+  rangeError,
+  rangeHeader,
+  rangeTitle,
   trailerInPeriod,
   trucksInPeriod,
-  WorkSheetPeriod,
 } from '../worksheetModel';
 import { makeWorkSheetPdf } from '../worksheetPdf';
 
 export function useWorkSheet() {
   const [days] = useState(() => useDaysStore.getState().days);
   const tz = timeZoneId(useSettingsStore((s) => s.timeZone));
-  const [period, setPeriod] = useState<WorkSheetPeriod>('month');
-  const [referenceDate, setReferenceDate] = useState(new Date());
+  const [range, setRange] = useState<DateRange>(() => defaultRange(new Date(), tz));
   const [selectedTruckPlate, setSelectedTruckPlate] = useState<string | null>(null);
   const [lastSyncLabel] = useState(() => {
     const d = new Date();
     return strings().worksheet.todayAt(`${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`);
   });
 
-  const inPeriod = useMemo(() => daysInPeriod(days, period, referenceDate, tz), [days, period, referenceDate, tz]);
+  const error = rangeError(range, tz);
+  const inPeriod = useMemo(() => (error ? [] : daysInRange(days, range, tz)), [days, range, tz, error]);
   const trucks = trucksInPeriod(inPeriod);
   const trailer = trailerInPeriod(inPeriod);
   const filtered = filterByPlate(inPeriod, selectedTruckPlate);
   // `days` inteiro: a carga de uma descarga pode estar fora do período.
   const rows = useMemo(() => buildRows(filtered, tz, days), [filtered, tz, days]);
-  const title = periodTitle(period, referenceDate, tz);
-
-  /** "Registo servico <matrícula> <período>" */
-  const fileBaseName = () => {
-    const plate = selectedTruckPlate ?? trucks[0] ?? 'matricula';
-    return `Registo servico ${plate} ${title.replace(/ /g, '-').replace(/,/g, '')}`;
-  };
+  const truckPlate = selectedTruckPlate ?? trucks[0] ?? null;
 
   const sharePdf = async () => {
+    if (error) return;
     try {
+      const header = rangeHeader(range, tz);
       const uri = await makeWorkSheetPdf(
         {
-          title,
-          // O PDF é o modelo Agrotir: fica sempre em português.
-          mes: capitalizedWords(formatDate(referenceDate, 'MMMM', undefined, 'pt_PT')),
-          ano: formatDate(referenceDate, 'yyyy', undefined, 'pt_PT'),
-          truckPlate: selectedTruckPlate ?? trucks[0] ?? null,
+          title: rangeTitle(range, tz),
+          periodLabel: header.label,
+          periodValue: header.value,
+          truckPlate,
           trailerPlate: trailer,
           motorista: getCurrentUser()?.name ?? '—',
           rows: buildRows(filtered, tz, days),
           fuelings: buildFuelingEntries(filtered, tz),
         },
-        `${fileBaseName()}.pdf`
+        `${fileBaseName(truckPlate, range, tz)}.pdf`
       );
       await Sharing.shareAsync(uri, { mimeType: 'application/pdf', UTI: 'com.adobe.pdf' });
     } catch (e) {
@@ -76,8 +73,9 @@ export function useWorkSheet() {
   };
 
   const shareCsv = async () => {
+    if (error) return;
     try {
-      const uri = writeCsvFile(makeCsv(buildRows(filtered, tz, days), getCurrentUser()?.name ?? ''), `${fileBaseName()}.csv`);
+      const uri = writeCsvFile(makeCsv(buildRows(filtered, tz, days), getCurrentUser()?.name ?? ''), `${fileBaseName(truckPlate, range, tz)}.csv`);
       await Sharing.shareAsync(uri, { mimeType: 'text/csv', UTI: 'public.comma-separated-values-text' });
     } catch (e) {
       console.log(e);
@@ -85,9 +83,12 @@ export function useWorkSheet() {
   };
 
   return {
-    period,
-    setPeriod,
-    title,
+    range,
+    setFrom: (from: Date) => setRange((r) => ({ ...r, from })),
+    setUntil: (until: Date) => setRange((r) => ({ ...r, until })),
+    /** "Até" antes de "De": mensagem de erro; os botões de exportar ficam desativados */
+    error,
+    title: rangeTitle(range, tz),
     trucks,
     trailer,
     selectedTruckPlate,
@@ -96,8 +97,6 @@ export function useWorkSheet() {
     counts: counts(filtered),
     warnings: missingFinalKmWarnings(filtered, tz),
     lastSyncLabel,
-    previous: () => setReferenceDate(stepPeriod(period, referenceDate, -1, tz)),
-    next: () => setReferenceDate(stepPeriod(period, referenceDate, 1, tz)),
     sharePdf,
     shareCsv,
   };

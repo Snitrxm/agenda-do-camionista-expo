@@ -7,33 +7,36 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useStrings } from '../../../hooks/useStrings';
 import { formatInteger } from '../../../lib/numbers';
+import { DatePicker } from '../../../ui/DatePicker';
 import { Icon } from '../../../ui/Icon';
 import { openMenu } from '../../../ui/menus';
 import { Divider } from '../../../ui/primitives';
 import { colors, fontSize, shadow, text } from '../../../ui/theme';
-import { periodSubtitle, WorkSheetCounts, WorkSheetPeriod, WorkSheetRow } from '../worksheetModel';
+import { DateRange, WorkSheetCounts, WorkSheetRow } from '../worksheetModel';
 
 const ALL_PLATES = '__all__';
 
-/** Navegação de período e matrículas do período. */
+/** Datas De / Até (com erro se "Até" for antes de "De") e matrículas do período. */
 export function PeriodCard({
-  period,
   title,
+  range,
+  onFrom,
+  onUntil,
+  error,
   trucks,
   trailer,
   selectedTruckPlate,
   onSelectTruck,
-  onPrevious,
-  onNext,
 }: {
-  period: WorkSheetPeriod;
   title: string;
+  range: DateRange;
+  onFrom: (d: Date) => void;
+  onUntil: (d: Date) => void;
+  error: string | null;
   trucks: string[];
   trailer: string | null;
   selectedTruckPlate: string | null;
   onSelectTruck: (plate: string | null) => void;
-  onPrevious: () => void;
-  onNext: () => void;
 }) {
   const t = useStrings().worksheet;
   const chooseTruck = () =>
@@ -43,18 +46,27 @@ export function PeriodCard({
 
   return (
     <View style={[styles.panel, styles.gap12]}>
-      <View style={styles.row}>
-        <Pressable hitSlop={10} onPress={onPrevious}>
-          <Icon name="chevron.left" size={fontSize.title3} color={colors.textSecondary} />
-        </Pressable>
+      <View style={styles.dateRow}>
+        <View style={styles.dateField}>
+          <Text style={text(fontSize.subheadline, '500')}>{t.from}</Text>
+          <DatePicker value={range.from} onChange={onFrom} />
+        </View>
+        <View style={styles.dateField}>
+          <Text style={text(fontSize.subheadline, '500')}>{t.until}</Text>
+          <DatePicker value={range.until} onChange={onUntil} />
+        </View>
+      </View>
+      {error ? (
+        <View style={styles.errorRow}>
+          <Icon name="exclamationmark.triangle.fill" size={fontSize.subheadline} color={colors.dangerText} />
+          <Text style={[text(fontSize.subheadline, '600', colors.dangerText), styles.flex]}>{error}</Text>
+        </View>
+      ) : (
         <View style={styles.periodTitle}>
           <Text style={text(fontSize.headline, '600')}>{title}</Text>
-          <Text style={text(fontSize.caption, '400', colors.textSecondary)}>{periodSubtitle(period)}</Text>
+          <Text style={text(fontSize.caption, '400', colors.textSecondary)}>{t.sameDateHint}</Text>
         </View>
-        <Pressable hitSlop={10} onPress={onNext}>
-          <Icon name="chevron.right" size={fontSize.title3} color={colors.textSecondary} />
-        </Pressable>
-      </View>
+      )}
       <Divider />
       <Text style={styles.template}>{t.templateName}</Text>
       <View style={styles.plates}>
@@ -146,25 +158,35 @@ function Counter({ value, label }: { value: number; label: string }) {
 }
 
 /** "Exportar PDF" + "Excel" + "Enviar à empresa" (este último também partilha o PDF). */
-export function ExportButtons({ onPdf, onCsv }: { onPdf: () => void; onCsv: () => void }) {
+export function ExportButtons({ onPdf, onCsv, disabled = false }: { onPdf: () => void; onCsv: () => void; disabled?: boolean }) {
   const t = useStrings().worksheet;
   return (
     <>
-      <Pressable onPress={onPdf} style={({ pressed }) => [styles.pdfButton, { opacity: pressed ? 0.7 : 1 }]}>
+      <Pressable
+        onPress={onPdf}
+        disabled={disabled}
+        accessibilityState={{ disabled }}
+        style={({ pressed }) => [styles.pdfButton, { opacity: disabled ? 0.4 : pressed ? 0.7 : 1 }]}
+      >
         <Icon name="square.and.arrow.down" size={fontSize.title3} color="#fff" />
         <Text style={text(fontSize.headline, '600', '#fff')}>{t.exportPdf}</Text>
       </Pressable>
       <View style={styles.secondaryButtons}>
-        <SecondaryButton label={t.excel} icon="tablecells" onPress={onCsv} />
-        <SecondaryButton label={t.sendToCompany} icon="paperplane.fill" onPress={onPdf} />
+        <SecondaryButton label={t.excel} icon="tablecells" onPress={onCsv} disabled={disabled} />
+        <SecondaryButton label={t.sendToCompany} icon="paperplane.fill" onPress={onPdf} disabled={disabled} />
       </View>
     </>
   );
 }
 
-function SecondaryButton({ label, icon, onPress }: { label: string; icon: string; onPress: () => void }) {
+function SecondaryButton({ label, icon, onPress, disabled }: { label: string; icon: string; onPress: () => void; disabled: boolean }) {
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.secondaryButton, { opacity: pressed ? 0.6 : 1 }]}>
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityState={{ disabled }}
+      style={({ pressed }) => [styles.secondaryButton, { opacity: disabled ? 0.4 : pressed ? 0.6 : 1 }]}
+    >
       <Icon name={icon} size={fontSize.subheadline} color={colors.tealDark} />
       <Text style={text(fontSize.subheadline, '600', colors.tealDark)}>{label}</Text>
     </Pressable>
@@ -221,6 +243,9 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center' },
   rowOnly: { flexDirection: 'row' },
   periodTitle: { flex: 1, alignItems: 'center', gap: 2 },
+  dateRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' },
+  dateField: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  errorRow: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, borderRadius: 10, backgroundColor: colors.dangerBg },
   template: { ...text(fontSize.footnote, '400', colors.textSecondary), textAlign: 'center' },
   plates: { flexDirection: 'row', gap: 10 },
   plateBadge: { flex: 1, gap: 4, padding: 12, backgroundColor: colors.inputBg, borderRadius: 10 },

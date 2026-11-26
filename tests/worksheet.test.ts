@@ -3,7 +3,15 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { buildRows, daysInPeriod, missingFinalKmWarnings, sheetCells } from '../src/features/worksheet/worksheetModel';
+import {
+  buildRows,
+  daysInRange,
+  fileBaseName,
+  missingFinalKmWarnings,
+  rangeError,
+  rangeHeader,
+  sheetCells,
+} from '../src/features/worksheet/worksheetModel';
 import { fromWall } from '../src/lib/timezone';
 import { DayActionStruct, DayStruct } from '../src/types/models';
 
@@ -37,7 +45,7 @@ const table = (days: DayStruct[], all = days) =>
 
 const load = (date: string, company: string) => act('Carregamento', date, { cliente: 'Lactogal', empresaLocal: company });
 
-test('a) Exemplo: dia 15 carga, dia 16 descarga + nova carga → 3 linhas exatamente como na tabela', () => {
+test('c) Dia 16 com descarga e nova carga não descarregada → 2 linhas (descarga com km inicial; nova carga com "–" e km final)', () => {
   const d15 = day(at(2026, 11, 15, 6), 46500, 46610, [
     act('Partida', at(2026, 11, 15, 6)),
     load(at(2026, 11, 15, 9), 'Lactogal Modivas'),
@@ -50,20 +58,20 @@ test('a) Exemplo: dia 15 carga, dia 16 descarga + nova carga → 3 linhas exatam
     act('Chegada', at(2026, 11, 16, 19)),
   ]);
   assert.deepEqual(table([d15, d16]), [
-    ['15', 'Lactogal', 'Lactogal Modivas', '–', '', '46 500', '46 610'],
+    ['15', 'Lactogal', 'Lactogal Modivas', '–', '–', '46 500', '46 610'],
     ['16', 'Lactogal', 'Lactogal Modivas', 'Inleit, Curtis', '25 000 L', '46 610', '–'],
-    ['16', 'Lactogal', 'Lactogal Lugo', '–', '', '–', '47 000'],
+    ['16', 'Lactogal', 'Lactogal Lugo', '–', '–', '–', '47 000'],
   ]);
 });
 
-test('b) Carga a 30/11 e descarga a 1/12 → folha de dezembro tem o cliente e o local de carga de 30/11', () => {
+test('Carga a 30/11 e descarga a 1/12 → folha de dezembro tem o cliente e o local de carga de 30/11', () => {
   const d30 = day(at(2026, 11, 30, 6), 46000, 46300, [act('Partida', at(2026, 11, 30, 6)), load(at(2026, 11, 30, 10), 'Lactogal Modivas')]);
   const d1 = day(at(2026, 12, 1, 6), 46300, 46700, [
     act('Partida', at(2026, 12, 1, 6)),
     act('Descarga', at(2026, 12, 1, 9), { cliente: 'Lactogal', empresaLocal: 'Inleit', local: 'Curtis - España', quantidade: 25000, unidade: 'L' }),
   ]);
   const all = [d30, d1];
-  const december = daysInPeriod(all, 'month', new Date(at(2026, 12, 10, 12)), TZ);
+  const december = daysInRange(all, { from: new Date(at(2026, 12, 1, 12)), until: new Date(at(2026, 12, 31, 12)) }, TZ);
   assert.deepEqual(
     december.map((d) => d.id),
     [d1.id]
@@ -105,7 +113,54 @@ test('Linhas por ordem de hora; descarga sem cliente usa a carga mais antiga por
     act('Descarga', at(2026, 11, 23, 12), { empresaLocal: 'Inleit', quantidade: 10000, unidade: 'kg' }),
   ]);
   assert.deepEqual(table([d]), [
-    ['23', 'Lactogal', 'Lactogal Modivas', '–', '', '1000', '–'],
+    ['23', 'Lactogal', 'Lactogal Modivas', '–', '–', '1000', '–'],
     ['23', 'Mimosa', 'Mimosa Porto', 'Inleit', '10 000 kg', '–', '1500'],
   ]);
+});
+
+
+// Exemplo do pedido: dia 15 carga Lactogal em Lactogal Modivas; dia 16 descarga em Inleit (Curtis), 25 000 L.
+function example() {
+  const d15 = day(at(2026, 11, 15, 6), 46500, 46610, [
+    act('Partida', at(2026, 11, 15, 6)),
+    load(at(2026, 11, 15, 9), 'Lactogal Modivas'),
+    act('Chegada', at(2026, 11, 15, 18)),
+  ]);
+  const d16 = day(at(2026, 11, 16, 6), 46610, 47000, [
+    act('Partida', at(2026, 11, 16, 6)),
+    act('Descarga', at(2026, 11, 16, 9), { empresaLocal: 'Inleit', local: 'Curtis - España', quantidade: 25000, unidade: 'L' }),
+    act('Chegada', at(2026, 11, 16, 19)),
+  ]);
+  return [d15, d16];
+}
+const range = (from: [number, number], until: [number, number]) => ({
+  from: new Date(at(2026, from[0], from[1], 12)),
+  until: new Date(at(2026, until[0], until[1], 12)),
+});
+
+test('a) De 15/11 a 16/11 com o exemplo → as 2 linhas iguais à tabela', () => {
+  const all = example();
+  const r = range([11, 15], [11, 16]);
+  assert.deepEqual(table(daysInRange(all, r, TZ), all), [
+    ['15', 'Lactogal', 'Lactogal Modivas', '–', '–', '46 500', '46 610'],
+    ['16', 'Lactogal', 'Lactogal Modivas', 'Inleit, Curtis', '25 000 L', '46 610', '47 000'],
+  ]);
+  assert.equal(rangeError(r, TZ), null);
+  assert.deepEqual(rangeHeader(r, TZ), { label: 'Período:', value: '15/11/2026 a 16/11/2026' });
+  assert.equal(fileBaseName('12-AB-34', r, TZ), 'Registo servico 12-AB-34 15-11-2026 a 16-11-2026');
+});
+
+test('b) De 16/11 a 16/11 → 1 linha, com cliente e local de carga do dia 15', () => {
+  const all = example();
+  const r = range([11, 16], [11, 16]);
+  const only16 = daysInRange(all, r, TZ);
+  assert.equal(only16.length, 1);
+  assert.deepEqual(table(only16, all), [['16', 'Lactogal', 'Lactogal Modivas', 'Inleit, Curtis', '25 000 L', '46 610', '47 000']]);
+  assert.deepEqual(rangeHeader(r, TZ), { label: 'Dia:', value: '16/11/2026' });
+});
+
+test('d) "Até" antes de "De" → erro (o ecrã desativa os botões)', () => {
+  assert.equal(rangeError(range([11, 16], [11, 15]), TZ), '"Até" não pode ser antes de "De".');
+  // Mesmo dia com horas diferentes não é erro.
+  assert.equal(rangeError({ from: new Date(at(2026, 11, 16, 20)), until: new Date(at(2026, 11, 16, 8)) }, TZ), null);
 });
